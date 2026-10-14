@@ -1,4 +1,4 @@
-"""Airlock: a two-key promotion gate for staging -> production.
+"""Keychain: a two-key promotion gate for staging -> production.
 
 An item (change, model, config) may only move to production when two
 independent keys turn: automated checks pass AND a human approver
@@ -28,14 +28,14 @@ REJECTED = "rejected"
 APPROVER_KEY_ENV = "AIRLOCK_APPROVER_KEY"
 
 
-class AirlockError(Exception):
+class KeychainError(Exception):
     """Raised on invalid state transitions or bad usage."""
 
 
-class Airlock:
+class Keychain:
     """Two-key promotion gate: checks must pass, then a human approves."""
 
-    def __init__(self, name: str = "airlock", now: Optional[Callable[[], float]] = None):
+    def __init__(self, name: str = "keychain", now: Optional[Callable[[], float]] = None):
         self.name = name
         self._now = now or time.time
         self._items: Dict[str, Dict[str, Any]] = {}
@@ -44,9 +44,9 @@ class Airlock:
     # -- public API ----------------------------------------------------
 
     def propose(self, item_id: str, payload: Any = None) -> Dict[str, Any]:
-        """Register a new item; it enters the airlock as 'staged'."""
+        """Register a new item; it enters the gate as 'staged'."""
         if item_id in self._items:
-            raise AirlockError(f"item already proposed: {item_id!r}")
+            raise KeychainError(f"item already proposed: {item_id!r}")
         record = {
             "id": item_id,
             "payload": payload,
@@ -69,7 +69,7 @@ class Airlock:
         """
         record = self._get(item_id)
         if record["status"] not in (STAGED, CHECKS_PASSED):
-            raise AirlockError(
+            raise KeychainError(
                 f"cannot run checks on item in status {record['status']!r}"
             )
         self._transition(item_id, CHECKING, "checks started")
@@ -94,13 +94,13 @@ class Airlock:
         """Human key: approve a checks-passed item. Requires the key."""
         record = self._get(item_id)
         if record["status"] != CHECKS_PASSED:
-            raise AirlockError(
+            raise KeychainError(
                 f"only checks-passed items can be approved (status: {record['status']!r})"
             )
-        expected = os.environ.get(APPROVER_KEY_ENV, "airlock-approver")
+        expected = os.environ.get(APPROVER_KEY_ENV, "keychain-approver")
         if not approver_key or approver_key != expected:
             self._transition(item_id, record["status"], "approval denied: bad key")
-            raise AirlockError("invalid approver key")
+            raise KeychainError("invalid approver key")
         self._transition(item_id, APPROVED, "approved by human key")
         return APPROVED
 
@@ -108,7 +108,7 @@ class Airlock:
         """Move an approved item to production. Final gate."""
         record = self._get(item_id)
         if record["status"] != APPROVED:
-            raise AirlockError(
+            raise KeychainError(
                 f"only approved items can be promoted (status: {record['status']!r})"
             )
         self._transition(item_id, PROMOTED, "promoted to production")
@@ -118,7 +118,7 @@ class Airlock:
         """Manual rejection from any pre-promotion state."""
         record = self._get(item_id)
         if record["status"] == PROMOTED:
-            raise AirlockError("cannot reject a promoted item")
+            raise KeychainError("cannot reject a promoted item")
         self._transition(item_id, REJECTED, reason)
         record["reasons"] = [reason]
         return REJECTED
@@ -137,7 +137,7 @@ class Airlock:
         try:
             return self._items[item_id]
         except KeyError:
-            raise AirlockError(f"unknown item: {item_id!r}") from None
+            raise KeychainError(f"unknown item: {item_id!r}") from None
 
     def _transition(self, item_id: str, new_status: str, note: str) -> None:
         record = self._get(item_id)

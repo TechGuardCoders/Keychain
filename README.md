@@ -4,7 +4,7 @@ A two-key promotion gate: changes, models, and configs move **staging → produc
 
 ## Why
 
-Single-signal pipelines fail in one of two ways: a green CI gets waved straight to prod, or a human rubber-stamps without checks. Airlock enforces both keys, in order, with no bypass:
+Single-signal pipelines fail in one of two ways: a green CI gets waved straight to prod, or a human rubber-stamps without checks. Keychain enforces both keys, in order, with no bypass:
 
 ```
 staged → checking → checks-passed → approved → promoted
@@ -21,23 +21,23 @@ staged → checking → checks-passed → approved → promoted
 ## Results
 
 - 17 tests, all passing (`uv run pytest`), pure Python stdlib, no network.
-- State machine is total: every illegal transition raises `AirlockError` instead of silently proceeding.
+- State machine is total: every illegal transition raises `KeychainError` instead of silently proceeding.
 - The approver key is read from the `AIRLOCK_APPROVER_KEY` environment variable — never hardcoded.
 
 ## Architecture
 
-One module (`airlock.py`), one class, zero dependencies:
+One module (`keychain.py`), one class, zero dependencies:
 
-- `Airlock` holds items, their statuses, and an append-only audit log.
+- `Keychain` holds items, their statuses, and an append-only audit log.
 - Checks are plain callables taking the item payload — truthy return passes, falsy or exception fails with a reason.
 - A monotonic injected clock (`now=`) makes the audit trail deterministic and testable.
 
 ## Usage
 
 ```python
-from airlock import Airlock
+from keychain import Keychain
 
-gate = Airlock()
+gate = Keychain()
 gate.propose("model-v2", {"weights": "s3://..."})
 gate.run_checks("model-v2", {
     "eval_score": lambda p: p["eval"] > 0.9,
